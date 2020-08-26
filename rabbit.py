@@ -3,6 +3,10 @@
 """
 __author__ = 'ilmostro'
 
+import json
+import sys
+import time
+
 import pika
 from pika import PlainCredentials
 
@@ -37,12 +41,19 @@ class MessageQueue(object):
         self.channel.start_consuming()
 
 
+credentials = RabbitMqProperties(username='guest', password='guest', host="192.168.1.104")
+
+
+def temperature(path):
+    message_queue = MessageQueue(cred=credentials, exchange="raspberry.monitor", routing_key="temperature")
+    while True:
+        file = open(path)
+        message = {"time": time.asctime(time.localtime(time.time())), "content": str(file.read())}
+        message_queue.producer(json.dumps(message))
+        time.sleep(1)
+        file.close()
+
+
 if __name__ == '__main__':
-    credentials = RabbitMqProperties(username='guest', password='guest', host="192.168.1.104")
-    queue = MessageQueue(cred=credentials, exchange="raspberry.monitor", routing_key="temperature")
-    # while True:
-    #     file = open("/sys/class/thermal/thermal_zone0/temp")
-    #     queue.producer(file.read())
-    #     time.sleep(1)
-    #     file.close()
-    queue.consumer(callback=lambda w, x, y, z: print(z), queue_name="temperature_queue")
+    argv = sys.argv
+    temperature(str(sys.argv[1]))
