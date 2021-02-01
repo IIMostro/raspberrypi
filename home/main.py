@@ -6,6 +6,8 @@ import uasyncio
 import network
 import ujson
 from umqtt.simple import MQTTClient
+import esp
+import machine
 
 """
 Wi-Fi Gateway : SSID and Password
@@ -21,18 +23,22 @@ MQTT_PORT = 1883
 MQTT_CLIENT_ID = 'drawing_light_1'
 MQTT_USER_NAME = ""
 MQTTT_PASSWORD = ""
-#发布命令
+# 发布命令
 MQTT_COMMAND_TOPIC = 'drawing/light/switch'
-#接受状态
+# 接受状态
 MQTT_STATE_TOPIC = 'drawing/light/state'
 
 led = Led(5, 4, 0)
 relay = Relay(16)
+adc = machine.ADC(0)
 
 mqtt_client = None
 color = 0  # enum 0=red, 1=green, 2=blue
 name = ""  # light name. it is optional
 light_changed = False
+
+rotation_sensor_data = 0
+rotation_sensor_change = False
 
 
 async def wifi_connect(ssid, pwd):
@@ -58,7 +64,7 @@ def mqtt_callback(topic, msg):
 
     brightness_tmp = params.get('brightness')
     if brightness_tmp is not None:
-        led.brightness = brightness_tmp/255
+        led.brightness = brightness_tmp / 255
 
     color_tmp = params.get('color_temp')
     if color_tmp is not None:
@@ -75,7 +81,6 @@ def mqtt_callback(topic, msg):
 
 
 async def mqtt_connect():
-
     global mqtt_client
 
     mqtt_client = MQTTClient(MQTT_CLIENT_ID, MQTT_SERVER, MQTT_PORT, MQTT_USER_NAME, MQTTT_PASSWORD, 60)
@@ -99,25 +104,39 @@ def mqtt_report(client):
 
 async def light_loop():
     global led, relay
-    global name, light_changed
-
-    time_cnt = 0
+    global name, light_changed, rotation_sensor_data, rotation_sensor_change
 
     led.rgb_light()
 
     mqtt_client.subscribe(MQTT_COMMAND_TOPIC.encode())
     while True:
         mqtt_client.check_msg()
+        await rotation_sensor()
 
         if light_changed:
             light_changed = False
             led.rgb_light()
 
-        if time_cnt >= 20:
-            mqtt_report(mqtt_client)
-            time_cnt = 0
-        time_cnt = time_cnt + 1
-        uasyncio.sleep_ms(50)
+        if rotation_sensor_change:
+            led.brightness = rotation_sensor_data
+            if abs(rotation_sensor_data) <= 0.01:
+                relay.set_state("OFF")
+            else:
+                led.rgb_light()
+                relay.set_state("ON")
+            rotation_sensor_change = False
+
+        mqtt_report(mqtt_client)
+        await uasyncio.sleep(0.01)
+
+
+async def rotation_sensor():
+    global rotation_sensor_data, rotation_sensor_change
+
+    rotation_sensor_data_temp = adc.read() / 1024
+    if abs(rotation_sensor_data_temp - rotation_sensor_data) > 0.01:
+        rotation_sensor_data = rotation_sensor_data_temp
+        rotation_sensor_change = True
 
 
 async def main():
@@ -126,9 +145,10 @@ async def main():
     # Wi-Fi connection
     try:
         await uasyncio.wait_for(wifi_connect(WIFI_AP_SSID, WIFI_AP_PSW), 20)
+        esp.sleep_type(1)
+        print("esp current sleep type is ", esp.sleep_type())
     except uasyncio.TimeoutError:
         print("wifi connected timeout!")
-
     # MQTT connection
     try:
         await uasyncio.wait_for(mqtt_connect(), 20)
