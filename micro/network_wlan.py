@@ -1,5 +1,9 @@
 import network
 
 wlan = network.WLAN(network.STA_IF)
-wlan.connect("wifi_name", "wifi_password")
+wlan.active(True)
+wlan.connect("gonewiththewind", "wangtao0303")
 wlan.isconnected()
+
+
+
