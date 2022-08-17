@@ -2,12 +2,16 @@ import time
 
 import dht
 import network
+import ntptime
 import uasyncio
 import ujson
+import upip
 from machine import Pin
+from machine import Timer
 from umqtt.simple import MQTTClient
 
 buzzer = Pin(16, Pin.OUT)
+light_pin = Pin(2, Pin.OUT)
 temperature_pin = Pin(5)
 mqtt_client = None
 
@@ -45,13 +49,21 @@ async def connect_mqtt(client_id, host, port=1883, username=None, password=None,
     print(f"mqtt client {client_id} already connected!")
 
 
-async def publish_message(tempera, humidity, timestamp):
+async def pip_init_install():
+    print("install umqtt....")
+    upip.install("umqtt")
+    print("install umqtt successed")
+
+
+async def publish_message(tempera, humidity):
     msg = {
-        "temperature": tempera,
-        "humidity": humidity,
-        "timestamp": timestamp
+        "device": "root.home.living.temperature",
+        "timestamp": (time.time() + 946656000) * 1000,
+        "measurements": ["temperature", "humidity"],
+        "values": [tempera, humidity]
     }
-    mqtt_client.publish("/esp8266/temperature".encode(), ujson.dumps(msg).encode())
+    print(msg)
+    mqtt_client.publish("home.living".encode(), ujson.dumps(msg).encode())
 
 
 async def buzzer_alter(pin: Pin, timing):
@@ -63,23 +75,51 @@ async def buzzer_alter(pin: Pin, timing):
 async def forever_read_temp():
     while True:
         temperature, humidity = read_temperature(temperature_pin)
-        print(f'temperature: {temperature}, humidity:{humidity}')
         tasks = []
         if temperature > 33:
             tasks.append(uasyncio.gather(buzzer_alter(buzzer, 0.5)))
-        tasks.append(uasyncio.gather(publish_message(temperature, humidity, time.time())))
+        tasks.append(uasyncio.gather(publish_message(temperature, humidity)))
         await uasyncio.gather(*tasks)
         await uasyncio.sleep(2)
 
 
+async def initialize_time():
+    print("synchronization before time:" + str(time.localtime()))
+    try:
+        ntptime.NTP_DELTA = 3155644800
+        ntptime.host = 'ntp1.aliyun.com'
+        ntptime.settime()
+        print("synchronization after time:" + str(time.localtime()))
+    except OSError:
+        await initialize_time()
+
+
+def sync_initialize_time():
+    await initialize_time()
+
+
 async def main():
     await uasyncio.wait_for(connect_wifi("gonewiththewind", "wangtao0303"), 20)
-    await uasyncio.wait_for(connect_mqtt("esp8266_temperature_client", "192.168.0.105"), 20)
+    tasks = [
+        pip_init_install(),
+        initialize_time()
+    ]
+    await uasyncio.gather(*tasks)
+    await uasyncio.wait_for(connect_mqtt("esp8266_temperature_client", "192.168.0.105", 1883, 'root', 'root'), 20)
     await uasyncio.gather(forever_read_temp())
+
+
+def run_status_light(data):
+    light_pin.off()
+    time.sleep_ms(500)
+    light_pin.on()
 
 
 if __name__ == '__main__':
     event_loop = uasyncio.get_event_loop()
     event_loop.create_task(main())
+    sync_time_timer = Timer(1)
+    sync_time_timer.init(period=1000 * 60 * 60 * 7, mode=Timer.PERIODIC, callback=sync_initialize_time)
+    light_time_timer = Timer(2)
+    light_time_timer.init(period=5 * 1000, mode=Timer.PERIODIC, callback=run_status_light)
     event_loop.run_forever()
-
