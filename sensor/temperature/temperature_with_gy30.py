@@ -1,4 +1,3 @@
-import asyncio
 import time
 
 import dht
@@ -11,7 +10,7 @@ from machine import Pin, Timer, SoftI2C
 from umqtt.simple import MQTTClient
 
 temperature_pin = Pin(14)
-i2c = SoftI2C(scl=Pin(5), sda=Pin(4))
+i2c = SoftI2C(scl=Pin(12), sda=Pin(13))
 
 mqtt_client = None
 
@@ -84,9 +83,9 @@ async def read_illuminance(i2c: SoftI2C):
     if len(i2c_addr) != 1:
         return 0
     i2c.writeto(i2c_addr[0], b"\x01")
-    i2c.writeto(i2c_addr, bytes([0x10]))
-    await asyncio.sleep(0.2)
-    raw = i2c.readfrom(i2c_addr, 2)
+    i2c.writeto(i2c_addr[0], bytes([0x10]))
+    await uasyncio.sleep(1)
+    raw = i2c.readfrom(i2c_addr[0], 2)
     return ((raw[0] << 24) | (raw[1] << 16)) // 78642
 
 
