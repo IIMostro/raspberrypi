@@ -6,6 +6,7 @@ class Steering:
 
     def __init__(self):
         self.rotation = ADC(Pin(13))
+        # 3.3v下的旋钮数值
         self.rotation.atten(ADC.ATTN_11DB)
         self.button = Pin(26, Pin.IN)
         self.switch_value = 0
