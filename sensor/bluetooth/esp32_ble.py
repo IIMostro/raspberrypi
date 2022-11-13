@@ -34,11 +34,15 @@ class ESP32_BLE():
         reader_uuid = '6E400002-B5A3-F393-E0A9-E50E24DCCA9E'
         sender_uuid = '6E400003-B5A3-F393-E0A9-E50E24DCCA9E'
 
+        # 这个services代表的是一个服务，例如一个蓝牙可以做很多事情，温度接收，光照接收，这就是两个服务
         services = (
             (
+                # 初始化一个服务的uuid
                 bluetooth.UUID(service_uuid),
                 (
+                    # 服务发送的uuid
                     (bluetooth.UUID(sender_uuid), bluetooth.FLAG_NOTIFY),
+                    # 服务接收的uuid
                     (bluetooth.UUID(reader_uuid), bluetooth.FLAG_WRITE),
                 )
             ),
